@@ -38,18 +38,29 @@ WildRydes.map = WildRydes.map || {};
         });
     }
 
-    function completeRequest(result) {
-        var unicorn;
-        var pronoun;
-        console.log('Full API Response: ', result);
-        unicorn = result.Unicorn;
-        pronoun = unicorn.Gender === 'Male' ? 'his' : 'her';
-        displayUpdate(unicorn.Name + ', your ' + unicorn.Color + ' unicorn, is on ' + pronoun + ' way.');
-        animateArrival(function animateCallback() {
-            displayUpdate(unicorn.Name + ' has arrived. Giddy up!');
-            WildRydes.map.unsetLocation();
-            $('#request').prop('disabled', 'disabled');
-            $('#request').text('Set Pickup');
+function completeRequest(result) {
+  console.log('API Response:', result);
+
+  // Guard: Check if response has valid Unicorn data
+  if (!result?.Unicorn) {
+    console.error('Invalid unicorn data:', result);
+    displayUpdate('Error: Could not find a unicorn. Please try again.');
+    return;
+  }
+
+  // Safely extract values with defaults
+  const unicorn = result.Unicorn;
+  const gender = (unicorn.Gender || unicorn.gender || 'Female').toLowerCase();
+  const pronoun = gender === 'male' ? 'his' : 'her';
+  const name = unicorn.Name || 'Mystery Unicorn';
+  const color = unicorn.Color || 'sparkling';
+
+  displayUpdate(`${name}, your ${color} unicorn, is on ${pronoun} way.`);
+
+  animateArrival(() => {
+    displayUpdate(`${name} has arrived. Giddy up!`);
+    WildRydes.map.unsetLocation();
+    $('#request').prop('disabled', true).text('Set Pickup');
         });
     }
 
