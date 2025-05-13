@@ -41,7 +41,7 @@ WildRydes.map = WildRydes.map || {};
     function completeRequest(result) {
         var unicorn;
         var pronoun;
-        console.log('Response received from API: ', result);
+        console.log('Full API Response: ', result);
         unicorn = result.Unicorn;
         pronoun = unicorn.Gender === 'Male' ? 'his' : 'her';
         displayUpdate(unicorn.Name + ', your ' + unicorn.Color + ' unicorn, is on ' + pronoun + ' way.');
