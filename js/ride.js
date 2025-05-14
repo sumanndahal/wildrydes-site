@@ -4,25 +4,39 @@ var WildRydes = window.WildRydes || {};
 WildRydes.map = WildRydes.map || {};
 
 (function rideScopeWrapper($) {
-    var authToken;
-    WildRydes.authToken.then(function setAuthToken(token) {
-        if (token) {
-            authToken = token;
-        } else {
-            window.location.href = '/signin.html';
-        }
-    }).catch(function handleTokenError(error) {
-        alert(error);
+    let authToken;
+
+    // Enhanced auth handling
+    function initializeAuth() {
+        WildRydes.authToken
+            .then(token => {
+                authToken = token;
+                updateAuthUI(token);
+            })
+            .catch(handleAuthError);
+    }
+
+    function updateAuthUI(token) {
+        displayUpdate('You are authenticated. Click to see your <a href="#authTokenModal" data-toggle="modal">auth token</a>.');
+        $('.authToken').text(token);
+    }
+
+    function handleAuthError(error) {
+        console.error('Auth Error:', error);
+        alert(error.message || 'Authentication failed');
         window.location.href = '/signin.html';
-    });
+    }
 
     function requestUnicorn(pickupLocation) {
+        if (!validatePickup(pickupLocation)) {
+            alert('Invalid pickup location');
+            return;
+        }
+
         $.ajax({
             method: 'POST',
             url: _config.api.invokeUrl + '/ride',
-            headers: {
-                Authorization: authToken
-            },
+            headers: { Authorization: authToken },
             data: JSON.stringify({
                 PickupLocation: {
                     Latitude: pickupLocation.latitude,
@@ -30,88 +44,99 @@ WildRydes.map = WildRydes.map || {};
                 }
             }),
             contentType: 'application/json',
-            success: completeRequest,
-            error: function ajaxError(jqXHR, textStatus, errorThrown) {
-                console.error('HTTP Error:', textStatus, errorThrown);
-                alert('Network error occurred. Please try again.');
-                resetUIState();
-            }
+            success: handleApiSuccess,
+            error: handleApiError
         });
     }
 
-    function completeRequest(result) {
-        console.log('API Response:', result);
-        
-        // Handle backend errors first
-        if (result.errorMessage || result.errorType) {
-            handleBackendError(result);
-            return;
-        }
+    function validatePickup(pickup) {
+        return pickup && 
+            typeof pickup.latitude === 'number' && 
+            typeof pickup.longitude === 'number';
+    }
 
-        // Process successful response
+    function handleApiSuccess(response) {
         try {
-            const unicorn = result.Unicorn || {};
-            const gender = (unicorn.Gender || '').toLowerCase();
-            const pronoun = getGenderPronoun(gender);
+            console.log('API Success:', response);
             
-            if (!unicorn.Name || !unicorn.Color) {
-                throw new Error('Invalid unicorn data in response');
+            if (response.error) {
+                handleBackendError(response);
+                return;
             }
 
-            displayUpdate(`${unicorn.Name}, your ${unicorn.Color} unicorn, is on ${pronoun} way.`);
+            processUnicornResponse(response);
+            animateArrival(() => finalizeRide(response.Unicorn.Name));
             
-            animateArrival(() => {
-                displayUpdate(`${unicorn.Name} has arrived. Giddy up!`);
-                resetUIState(true);
-            });
-
         } catch (error) {
-            console.error('Processing Error:', error);
-            alert(`Error: ${error.message}`);
+            console.error('Success Handling Error:', error);
+            alert('Error processing ride: ' + error.message);
             resetUIState();
         }
     }
 
-    function handleBackendError(errorResult) {
-        const errorMessage = errorResult.errorMessage || 'Unknown backend error';
-        console.error('Backend Error:', errorResult);
+    function handleApiError(jqXHR) {
+        console.error('API Failure:', jqXHR);
+        const error = parseErrorResponse(jqXHR);
         
-        if (errorResult.errorType === 'TypeError' && errorMessage.includes('authorizer')) {
-            alert('Authorization failed. Please login again.');
+        if (error.status === 401) {
+            alert('Session expired. Please login again.');
             window.location.href = '/signin.html';
         } else {
-            alert(`Backend Error: ${errorMessage}`);
+            alert(`Error: ${error.message}\nPlease try again.`);
             resetUIState();
         }
+    }
+
+    function parseErrorResponse(jqXHR) {
+        try {
+            return {
+                status: jqXHR.status,
+                ...JSON.parse(jqXHR.responseText)
+            };
+        } catch {
+            return {
+                status: jqXHR.status,
+                message: jqXHR.responseText || 'Unknown error'
+            };
+        }
+    }
+
+    function processUnicornResponse(response) {
+        const unicorn = response.Unicorn || {};
+        if (!unicorn.Name || !unicorn.Color) {
+            throw new Error('Invalid unicorn data received');
+        }
+
+        const pronoun = getGenderPronoun(unicorn.Gender);
+        displayUpdate(`${unicorn.Name}, your ${unicorn.Color} unicorn, is on ${pronoun} way.`);
+    }
+
+    function finalizeRide(unicornName) {
+        displayUpdate(`${unicornName} has arrived. Giddy up!`);
+        resetUIState(true);
     }
 
     function getGenderPronoun(gender) {
-        switch (gender) {
-            case 'male': return 'his';
-            case 'female': return 'her';
-            default: return 'their';
-        }
+        const normalized = String(gender || '').toLowerCase();
+        return {
+            male: 'his',
+            female: 'her'
+        }[normalized] || 'their';
     }
 
     function resetUIState(completed = false) {
         WildRydes.map.unsetLocation();
-        const $request = $('#request');
-        $request.prop('disabled', completed);
-        $request.text(completed ? 'Set Pickup' : 'Request Unicorn');
+        $('#request')
+            .prop('disabled', completed)
+            .text(completed ? 'Set Pickup' : 'Request Unicorn');
     }
 
-    // Rest of the code remains unchanged below this line
-    $(function onDocReady() {
+    // Initialization
+    $(() => {
+        initializeAuth();
         $('#request').click(handleRequestClick);
         $(WildRydes.map).on('pickupChange', handlePickupChanged);
-
-        WildRydes.authToken.then(function updateAuthMessage(token) {
-            if (token) {
-                displayUpdate('You are authenticated. Click to see your <a href="#authTokenModal" data-toggle="modal">auth token</a>.');
-                $('.authToken').text(token);
-            }
-        });
-
+        
         if (!_config.api.invokeUrl) {
             $('#noApiMessage').show();
         }
@@ -126,6 +151,7 @@ WildRydes.map = WildRydes.map || {};
         requestUnicorn(WildRydes.map.selectedPoint);
     }
 
+    // animateArrival and displayUpdate remain unchanged
     function animateArrival(callback) {
         const dest = WildRydes.map.selectedPoint;
         const origin = {
