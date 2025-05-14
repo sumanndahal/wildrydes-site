@@ -15,6 +15,7 @@ WildRydes.map = WildRydes.map || {};
         alert(error);
         window.location.href = '/signin.html';
     });
+
     function requestUnicorn(pickupLocation) {
         $.ajax({
             method: 'POST',
@@ -33,27 +34,41 @@ WildRydes.map = WildRydes.map || {};
             error: function ajaxError(jqXHR, textStatus, errorThrown) {
                 console.error('Error requesting ride: ', textStatus, ', Details: ', errorThrown);
                 console.error('Response: ', jqXHR.responseText);
-                alert('An error occured when requesting your unicorn:\n' + jqXHR.responseText);
+                alert('An error occurred when requesting your unicorn:\n' + (jqXHR.responseText || 'Unknown error'));
             }
         });
     }
 
     function completeRequest(result) {
-        var unicorn;
-        var pronoun;
-        console.log('Response received from API: ', result);
-        unicorn = result.Unicorn;
-        pronoun = unicorn.Gender === 'Male' ? 'his' : 'her';
-        displayUpdate(unicorn.Name + ', your ' + unicorn.Color + ' unicorn, is on ' + pronoun + ' way.');
-        animateArrival(function animateCallback() {
-            displayUpdate(unicorn.Name + ' has arrived. Giddy up!');
+        console.log('Full API response:', result);  // Log full response for debugging
+        
+        try {
+            const unicorn = result?.Unicorn || {};
+            const gender = unicorn?.Gender?.toLowerCase() || 'unknown';
+            const pronoun = gender === 'male' ? 'his' : gender === 'female' ? 'her' : 'their';
+            
+            if (!unicorn.Name || !unicorn.Color) {
+                throw new Error('Invalid unicorn data in response');
+            }
+
+            displayUpdate(`${unicorn.Name}, your ${unicorn.Color} unicorn, is on ${pronoun} way.`);
+            
+            animateArrival(function animateCallback() {
+                displayUpdate(`${unicorn.Name} has arrived. Giddy up!`);
+                WildRydes.map.unsetLocation();
+                $('#request').prop('disabled', 'disabled');
+                $('#request').text('Set Pickup');
+            });
+
+        } catch (error) {
+            console.error('Error processing request completion:', error);
+            alert('Failed to process unicorn information. Please try again.\n' + error.message);
             WildRydes.map.unsetLocation();
-            $('#request').prop('disabled', 'disabled');
-            $('#request').text('Set Pickup');
-        });
+            $('#request').prop('disabled', false);
+        }
     }
 
-    // Register click handler for #request button
+    // Rest of the code remains the same until displayUpdate
     $(function onDocReady() {
         $('#request').click(handleRequestClick);
         $(WildRydes.map).on('pickupChange', handlePickupChanged);
