@@ -6,7 +6,6 @@ WildRydes.map = WildRydes.map || {};
 (function rideScopeWrapper($) {
     let authToken;
 
-    // Enhanced auth handling
     function initializeAuth() {
         WildRydes.authToken
             .then(token => {
@@ -29,7 +28,7 @@ WildRydes.map = WildRydes.map || {};
 
     function requestUnicorn(pickupLocation) {
         if (!validatePickup(pickupLocation)) {
-            alert('Invalid pickup location');
+            alert('Please select a valid pickup location');
             return;
         }
 
@@ -50,33 +49,68 @@ WildRydes.map = WildRydes.map || {};
     }
 
     function validatePickup(pickup) {
-        return pickup && 
+        const isValid = pickup && 
             typeof pickup.latitude === 'number' && 
             typeof pickup.longitude === 'number';
+        
+        if (!isValid) {
+            console.error('Invalid pickup location:', pickup);
+        }
+        return isValid;
     }
 
     function handleApiSuccess(response) {
         try {
-            console.log('API Success:', response);
+            console.debug('API Response:', JSON.stringify(response, null, 2));
             
             if (response.error) {
                 handleBackendError(response);
                 return;
             }
 
+            if (!response.Unicorn) {
+                throw new Error('No unicorn data in response');
+            }
+
             processUnicornResponse(response);
             animateArrival(() => finalizeRide(response.Unicorn.Name));
             
         } catch (error) {
-            console.error('Success Handling Error:', error);
+            console.error('Response Handling Error:', {
+                error: error,
+                response: response
+            });
             alert('Error processing ride: ' + error.message);
             resetUIState();
         }
     }
 
+    function processUnicornResponse(response) {
+        const unicorn = response.Unicorn || {};
+        const defaultValues = {
+            Name: 'Mystery Unicorn',
+            Color: 'Rainbow',
+            Gender: 'Unknown'
+        };
+
+        if (!unicorn.Name || !unicorn.Color) {
+            console.warn('Incomplete unicorn data:', unicorn);
+            throw new Error('Received incomplete unicorn details');
+        }
+
+        const finalData = {
+            Name: unicorn.Name || defaultValues.Name,
+            Color: unicorn.Color || defaultValues.Color,
+            Gender: unicorn.Gender || defaultValues.Gender
+        };
+
+        const pronoun = getGenderPronoun(finalData.Gender);
+        displayUpdate(`${finalData.Name}, your ${finalData.Color} unicorn, is on ${pronoun} way.`);
+    }
+
     function handleApiError(jqXHR) {
-        console.error('API Failure:', jqXHR);
         const error = parseErrorResponse(jqXHR);
+        console.error('API Error:', error);
         
         if (error.status === 401) {
             alert('Session expired. Please login again.');
@@ -96,24 +130,9 @@ WildRydes.map = WildRydes.map || {};
         } catch {
             return {
                 status: jqXHR.status,
-                message: jqXHR.responseText || 'Unknown error'
+                message: jqXHR.responseText || 'Connection error'
             };
         }
-    }
-
-    function processUnicornResponse(response) {
-        const unicorn = response.Unicorn || {};
-        if (!unicorn.Name || !unicorn.Color) {
-            throw new Error('Invalid unicorn data received');
-        }
-
-        const pronoun = getGenderPronoun(unicorn.Gender);
-        displayUpdate(`${unicorn.Name}, your ${unicorn.Color} unicorn, is on ${pronoun} way.`);
-    }
-
-    function finalizeRide(unicornName) {
-        displayUpdate(`${unicornName} has arrived. Giddy up!`);
-        resetUIState(true);
     }
 
     function getGenderPronoun(gender) {
@@ -122,6 +141,11 @@ WildRydes.map = WildRydes.map || {};
             male: 'his',
             female: 'her'
         }[normalized] || 'their';
+    }
+
+    function finalizeRide(unicornName) {
+        displayUpdate(`${unicornName} has arrived. Giddy up!`);
+        resetUIState(true);
     }
 
     function resetUIState(completed = false) {
@@ -151,7 +175,6 @@ WildRydes.map = WildRydes.map || {};
         requestUnicorn(WildRydes.map.selectedPoint);
     }
 
-    // animateArrival and displayUpdate remain unchanged
     function animateArrival(callback) {
         const dest = WildRydes.map.selectedPoint;
         const origin = {
