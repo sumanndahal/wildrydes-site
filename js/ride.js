@@ -32,20 +32,27 @@ WildRydes.map = WildRydes.map || {};
             contentType: 'application/json',
             success: completeRequest,
             error: function ajaxError(jqXHR, textStatus, errorThrown) {
-                console.error('Error requesting ride: ', textStatus, ', Details: ', errorThrown);
-                console.error('Response: ', jqXHR.responseText);
-                alert('An error occurred when requesting your unicorn:\n' + (jqXHR.responseText || 'Unknown error'));
+                console.error('HTTP Error:', textStatus, errorThrown);
+                alert('Network error occurred. Please try again.');
+                resetUIState();
             }
         });
     }
 
     function completeRequest(result) {
-        console.log('Full API response:', result);  // Log full response for debugging
+        console.log('API Response:', result);
         
+        // Handle backend errors first
+        if (result.errorMessage || result.errorType) {
+            handleBackendError(result);
+            return;
+        }
+
+        // Process successful response
         try {
-            const unicorn = result?.Unicorn || {};
-            const gender = unicorn?.Gender?.toLowerCase() || 'unknown';
-            const pronoun = gender === 'male' ? 'his' : gender === 'female' ? 'her' : 'their';
+            const unicorn = result.Unicorn || {};
+            const gender = (unicorn.Gender || '').toLowerCase();
+            const pronoun = getGenderPronoun(gender);
             
             if (!unicorn.Name || !unicorn.Color) {
                 throw new Error('Invalid unicorn data in response');
@@ -53,22 +60,47 @@ WildRydes.map = WildRydes.map || {};
 
             displayUpdate(`${unicorn.Name}, your ${unicorn.Color} unicorn, is on ${pronoun} way.`);
             
-            animateArrival(function animateCallback() {
+            animateArrival(() => {
                 displayUpdate(`${unicorn.Name} has arrived. Giddy up!`);
-                WildRydes.map.unsetLocation();
-                $('#request').prop('disabled', 'disabled');
-                $('#request').text('Set Pickup');
+                resetUIState(true);
             });
 
         } catch (error) {
-            console.error('Error processing request completion:', error);
-            alert('Failed to process unicorn information. Please try again.\n' + error.message);
-            WildRydes.map.unsetLocation();
-            $('#request').prop('disabled', false);
+            console.error('Processing Error:', error);
+            alert(`Error: ${error.message}`);
+            resetUIState();
         }
     }
 
-    // Rest of the code remains the same until displayUpdate
+    function handleBackendError(errorResult) {
+        const errorMessage = errorResult.errorMessage || 'Unknown backend error';
+        console.error('Backend Error:', errorResult);
+        
+        if (errorResult.errorType === 'TypeError' && errorMessage.includes('authorizer')) {
+            alert('Authorization failed. Please login again.');
+            window.location.href = '/signin.html';
+        } else {
+            alert(`Backend Error: ${errorMessage}`);
+            resetUIState();
+        }
+    }
+
+    function getGenderPronoun(gender) {
+        switch (gender) {
+            case 'male': return 'his';
+            case 'female': return 'her';
+            default: return 'their';
+        }
+    }
+
+    function resetUIState(completed = false) {
+        WildRydes.map.unsetLocation();
+        const $request = $('#request');
+        $request.prop('disabled', completed);
+        $request.text(completed ? 'Set Pickup' : 'Request Unicorn');
+    }
+
+    // Rest of the code remains unchanged below this line
     $(function onDocReady() {
         $('#request').click(handleRequestClick);
         $(WildRydes.map).on('pickupChange', handlePickupChanged);
@@ -86,37 +118,28 @@ WildRydes.map = WildRydes.map || {};
     });
 
     function handlePickupChanged() {
-        var requestButton = $('#request');
-        requestButton.text('Request Unicorn');
-        requestButton.prop('disabled', false);
+        $('#request').text('Request Unicorn').prop('disabled', false);
     }
 
     function handleRequestClick(event) {
-        var pickupLocation = WildRydes.map.selectedPoint;
         event.preventDefault();
-        requestUnicorn(pickupLocation);
+        requestUnicorn(WildRydes.map.selectedPoint);
     }
 
     function animateArrival(callback) {
-        var dest = WildRydes.map.selectedPoint;
-        var origin = {};
-
-        if (dest.latitude > WildRydes.map.center.latitude) {
-            origin.latitude = WildRydes.map.extent.minLat;
-        } else {
-            origin.latitude = WildRydes.map.extent.maxLat;
-        }
-
-        if (dest.longitude > WildRydes.map.center.longitude) {
-            origin.longitude = WildRydes.map.extent.minLng;
-        } else {
-            origin.longitude = WildRydes.map.extent.maxLng;
-        }
-
+        const dest = WildRydes.map.selectedPoint;
+        const origin = {
+            latitude: dest.latitude > WildRydes.map.center.latitude 
+                ? WildRydes.map.extent.minLat 
+                : WildRydes.map.extent.maxLat,
+            longitude: dest.longitude > WildRydes.map.center.longitude 
+                ? WildRydes.map.extent.minLng 
+                : WildRydes.map.extent.maxLng
+        };
         WildRydes.map.animate(origin, dest, callback);
     }
 
     function displayUpdate(text) {
-        $('#updates').append($('<li>' + text + '</li>'));
+        $('#updates').append($(`<li>${text}</li>`));
     }
 }(jQuery));
